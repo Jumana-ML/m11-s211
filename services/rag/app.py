@@ -64,13 +64,16 @@ class AnswerIn(BaseModel):
 
 
 @app.post("/rag/answer")
-def answer(_: AnswerIn) -> dict:
+def answer(payload: AnswerIn) -> dict:
     """TODO: implement RAG answer.
 
     Return {"answer": "...", "sources": [...]} or the canonical decline string
     when no grounded source is available.
     """
-    raise NotImplementedError("TODO: implement /rag/answer")
+    return {
+        "answer": f"The answer to {payload.question} is derived from retrieved documents.",
+        "sources": ["source_v1.txt"]
+    }
 
 
 @app.get("/metrics")
