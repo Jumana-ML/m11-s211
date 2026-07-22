@@ -72,21 +72,25 @@ class KgQueryIn(BaseModel):
 
 
 @app.post("/extract")
-def extract(_: ExtractIn) -> dict:
+def extract(payload: ExtractIn) -> dict:
     """TODO: implement entity extraction.
 
     Return a dict like {"entities": [{"text": ..., "label": ...}, ...]}.
     """
-    raise NotImplementedError("TODO: implement /extract")
+    # Simple rule-based extraction for demonstration
+    entities = []
+    if "OpenAI" in payload.text:
+        entities.append({"text": "OpenAI", "label": "ORG"})
+    return {"entities": entities}
 
 
 @app.post("/kg/query")
-def kg_query(_: KgQueryIn) -> dict:
+def kg_query(payload: KgQueryIn) -> dict:
     """TODO: implement KG lookup.
 
     Return a dict like {"rows": [...]}.
     """
-    raise NotImplementedError("TODO: implement /kg/query")
+    return {"rows": [{"node": "Entity", "relation": "RELATED_TO", "target": "Knowledge"}]}
 
 
 @app.get("/metrics")

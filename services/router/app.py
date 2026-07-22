@@ -25,8 +25,9 @@ from pydantic import BaseModel
 from starlette.responses import Response
 
 SERVICE = os.environ.get("SERVICE_NAME", "router")
-NER_KG_URL = os.environ.get("NER_KG_URL", "http://ner-kg:8000")
-RAG_URL = os.environ.get("RAG_URL", "http://rag:8000")
+# Change these lines in services/router/app.py
+NER_KG_URL = os.environ.get("NER_KG_URL", "http://localhost:8101")
+RAG_URL = os.environ.get("RAG_URL", "http://localhost:8102")
 
 app = FastAPI()
 
@@ -75,7 +76,44 @@ def classify_question(question: str) -> Target:
     - You may also fit a small ML classifier; the rubric grades principled
       rationale either way.
     """
-    raise NotImplementedError("TODO: implement classify_question()")
+    q = question.lower().strip()
+    
+    # 1. RAG indicators (Process, explanation, comparison, opinion)
+    rag_patterns = [
+        "how to", "how do i", "how can", "why is", "explain", 
+        "describe", "summarize", "summary", "compare", "steps", 
+        "guide", "tutorial", "difference between", "opinion", "pros and cons"
+    ]
+    
+    # 2. NER-KG indicators (Facts, entities, specific data, relationships)
+    ner_kg_patterns = [
+        "who", "where", "when", "which", "extract", "entities", "entity",
+        "ceo", "founder", "born", "capital", "location", "headquarters",
+        "relationship", "related to", "works at", "president", "identify",
+        "list the", "price of", "names of", "founded", "member of"
+    ]
+
+    # Priority 1: If it asks for "how" or "explain", it's almost always RAG
+    if any(p in q for p in rag_patterns):
+        return "rag"
+
+    # Priority 2: If it's a command to extract or a factoid question (Who/Where/CEO)
+    if any(p in q for p in ner_kg_patterns):
+        return "ner-kg"
+
+    # Priority 3: Common factoid starts that aren't caught by keywords
+    if q.startswith(("is there", "are there", "was ", "did ")):
+        return "ner-kg"
+    
+    # Priority 4: "What" can be tricky. Usually "What is [X]" is NER-KG, 
+    # but "What are the steps to [X]" is RAG.
+    if q.startswith("what"):
+        if "step" in q or "process" in q or "way" in q:
+            return "rag"
+        return "ner-kg"
+
+    # Default fallback
+    return "rag"
 
 
 async def forward_to_backend(target: Target, question: str, request_id: str) -> dict:
@@ -86,7 +124,19 @@ async def forward_to_backend(target: Target, question: str, request_id: str) -> 
     - 'rag' has /rag/answer.
     - Propagate the x-request-id header so the backend's logs/metrics correlate.
     """
-    raise NotImplementedError("TODO: implement forward_to_backend()")
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        headers = {"X-Request-ID": request_id}
+        if target == "ner-kg":
+            # Decide between extract and query based on keyword
+            path = "/extract" if "extract" in question.lower() else "/kg/query"
+            url = f"{NER_KG_URL}{path}"
+            payload = {"text": question} if path == "/extract" else {"cypher": f"MATCH (n {{name: '{question}'}}) RETURN n"}
+            resp = await client.post(url, json=payload, headers=headers)
+        else:
+            url = f"{RAG_URL}/rag/answer"
+            resp = await client.post(url, json={"question": question}, headers=headers)
+        
+        return resp.json()
 
 
 @app.post("/route")
